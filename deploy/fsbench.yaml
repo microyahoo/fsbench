@@ -1,0 +1,363 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: csi-cephfs-pvc
+spec:
+  volumeMode: Filesystem
+  #volumeMode: Block
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Ti
+  storageClassName: csi-cephfs-sc
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fsbench-server
+  namespace: fsbench
+  labels:
+    app: fsbench-server
+    stack: fsbench
+    type: server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fsbench-server
+  template:
+    metadata:
+      labels:
+        app: fsbench-server
+        stack: fsbench
+        type: server
+    spec:
+      hostNetwork: true
+      containers:
+        - name: gobench-server
+          image: reg.deeproute.ai/deeproute-public/tools/fsbench-server:latest # need update
+          imagePullPolicy: Always
+          # image: ubuntu
+          # imagePullPolicy: IfNotPresent
+          # command: ["/bin/bash", "-c", "--"]
+          # args: [ "while true; do sleep 30; done;" ]
+          env:
+          - name: CONFIGFILE
+            value: "/config/config.yaml"
+          - name: SERVERPORT
+            value: "2000"
+          - name: DEBUG
+            value: "true"
+          - name: TRACE
+            value: "true"
+          ports:
+            - containerPort: 2000
+          #   - containerPort: 2001
+          securityContext:
+            privileged: true
+          volumeMounts:
+          - name: config
+            mountPath: /config/
+          - name: vol
+            mountPath: /volume/
+      volumes:
+      - name: vol
+        persistentVolumeClaim:
+          claimName: csi-cephfs-pvc
+      - name: config
+        configMap:
+          name: fsbench-config
+---
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: fsbench-worker
+  namespace: fsbench
+  labels:
+    k8s-app: fsbench-worker
+spec: 
+  selector:
+    matchLabels:
+      name: fsbench-worker
+  template:
+    metadata:
+      labels:
+        name: fsbench-worker
+    spec:
+      # tolerations:
+      # - effect: NoSchedule
+      #   key: node-role.kubernetes.io/master
+      #hostNetwork: true
+      containers:
+        - name: fsbench-worker
+          image: reg.deeproute.ai/deeproute-public/tools/fsbench-worker:latest # need update
+          imagePullPolicy: "Always"
+          env:
+          - name: CLIENT_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: FSBENCH_IN_CONTAINER
+            value: "true"
+          - name: PROMETHEUSPORT
+            value: "8888"
+          - name: SERVERADDRESS
+            value: "fsbench-server:2000"
+          - name: DEBUG
+            value: "false"
+          - name: TRACE
+            value: "true"
+          # resources:
+          #   limits:
+          #     memory: 200Mi
+          #     cpu: 200m
+          #   requests:
+          #     cpu: 10m
+          #     memory: 10Mi
+          ports:
+            - containerPort: 8888
+              hostPort:  7777  # expose as host port
+          securityContext:
+            privileged: true
+          volumeMounts:
+          # - mountPath: /dev
+          #   name: devices
+          # - mountPath: /run/udev
+          #   name: udev
+          # - mountPath: /rootfs
+          #   name: rootfs
+          #   readOnly: false
+          #   mountPropagation: HostToContainer
+          - name: vol
+            mountPath: /volume/
+          # - name: config
+          #   mountPath: /config/
+      volumes:
+      - name: vol
+        persistentVolumeClaim:
+          claimName: csi-cephfs-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fsbench-server
+  namespace: fsbench
+  labels:
+    app: fsbench-server
+    stack: fsbench
+spec:
+  type: NodePort
+  ports:
+    - name: fsbench-server
+      port: 2000
+      targetPort: 2000
+  selector:
+    app: fsbench-server
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fsbench-config
+  namespace: fsbench
+data:
+  config.yaml: |
+    clients:
+      - name: k1
+        ip: 10.3.11.81
+      - name: k2
+        ip: 10.3.11.82
+      - name: k3
+        ip: 10.3.11.83
+
+    report_config:
+      format: csv # csv, md or html
+      bucket: test
+      s3_config:
+        access_key: testy
+        secret_key: testy
+        region: us-east-1
+        endpoint: http://10.3.9.221:80
+        skipSSLverify: true
+
+    global_config:
+      reorder_tasks: true # having a different node read/stat back data than wrote it
+      anchor: /volume
+      direct_io: true
+      threads: [4, 8, 16, 32, 64, 128, 256]
+      operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
+      workers: 3
+
+    tests:
+      - name: 4k
+        fsd:
+          # anchor: /volume  # override global value
+          # direct_io: true  # override global value
+          depth: 2
+          width: 3
+          files: 100000
+          size: 4k
+        fwd:
+          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
+          block_size: 4k
+          # threads: [4, 8, 16, 32, 64, 128, 256]   # override global value
+      - name: 8k
+        fsd:
+          # anchor: /volume
+          # direct_io: true
+          depth: 2
+          width: 3
+          files: 10
+          size: 8k
+        fwd:
+          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
+          block_size: 8k
+          # threads: [4, 8, 16, 32, 64, 128, 256]
+      - name: 16k
+        fsd:
+          # anchor: /volume
+          # direct_io: true
+          depth: 2
+          width: 3
+          files: 10
+          size: 16k
+        fwd:
+          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
+          block_size: 16k
+          # threads: [4, 8, 16, 32, 64, 128, 256]
+      - name: 32k
+        fsd:
+          # anchor: /volume
+          # direct_io: true
+          depth: 2
+          width: 3
+          files: 10
+          size: 32k
+        fwd:
+          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
+          block_size: 32k
+          # threads: [4, 8, 16, 32, 64, 128, 256]
+      - name: 64k
+        fsd:
+          # anchor: /volume
+          # direct_io: true
+          depth: 2
+          width: 3
+          files: 10
+          size: 64k
+        fwd:
+          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
+          block_size: 64k
+          # threads: [4, 8, 16, 32, 64, 128, 256]
+      - name: 128k
+        fsd:
+          # anchor: /volume
+          # direct_io: true
+          depth: 2
+          width: 3
+          files: 10
+          size: 128k
+        fwd:
+          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
+          block_size: 128k
+          # threads: [4, 8, 16, 32, 64, 128, 256]
+      - name: 256k
+        fsd:
+          # anchor: /volume
+          # direct_io: true
+          depth: 2
+          width: 3
+          files: 10
+          size: 256k
+        fwd:
+          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
+          block_size: 256k
+          # threads: [4, 8, 16, 32, 64, 128, 256]
+      - name: 512k
+        fsd:
+          # anchor: /volume
+          # direct_io: true
+          depth: 2
+          width: 3
+          files: 10
+          size: 512k
+        fwd:
+          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
+          block_size: 512k
+          # threads: [4, 8, 16, 32, 64, 128, 256]
+      - name: 1m
+        fsd:
+          # anchor: /volume
+          # direct_io: true
+          depth: 2
+          width: 3
+          files: 10
+          size: 1m
+        fwd:
+          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
+          block_size: 1m
+          # threads: [4, 8, 16, 32, 64, 128, 256]
+      - name: 4m
+        fsd:
+          # anchor: /volume
+          # direct_io: true
+          depth: 2
+          width: 3
+          files: 10
+          size: 4m
+        fwd:
+          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
+          block_size: 4m
+          # threads: [4, 8, 16, 32, 64, 128, 256]
+      - name: 64m
+        fsd:
+          # anchor: /volume
+          # direct_io: true
+          depth: 2
+          width: 3
+          files: 10
+          size: 64m
+        fwd:
+          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
+          block_size: 4m
+          # threads: [4, 8, 16, 32, 64, 128, 256]
+      - name: 256m
+        fsd:
+          # anchor: /volume
+          # direct_io: true
+          depth: 2
+          width: 3
+          files: 10
+          size: 256m
+        fwd:
+          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
+          block_size: 4m
+          # threads: [4, 8, 16, 32, 64, 128, 256]
+      - name: 512m
+        fsd:
+          # anchor: /volume
+          # direct_io: true
+          depth: 2
+          width: 3
+          files: 10
+          size: 512m
+        fwd:
+          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
+          block_size: 4m
+          # threads: [4, 8, 16, 32, 64, 128, 256]
+      - name: 1g
+        fsd:
+          # anchor: /volume
+          # direct_io: true
+          depth: 2
+          width: 3
+          files: 10
+          size: 1g
+        fwd:
+          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
+          block_size: 4m
+          # threads: [4, 8, 16, 32, 64, 128, 256]
