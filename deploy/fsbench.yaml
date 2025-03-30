@@ -166,7 +166,7 @@ metadata:
   namespace: fsbench
 data:
   config.yaml: |
-    clients:
+    client_configs:
       - name: k1
         ip: 10.3.11.81
       - name: k2
