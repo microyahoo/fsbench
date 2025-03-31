@@ -2,6 +2,7 @@ package worker
 
 import (
 	"math/rand"
+	"os"
 	"sync"
 	"time"
 
@@ -14,15 +15,15 @@ import (
 // They can be read,write,list,delete or a stopper
 type WorkItem interface {
 	Prepare(conf *common.TestCaseConfiguration) error
-	Do(conf *common.TestCaseConfiguration) error
+	Do(conf *common.TestCaseConfiguration, index int) error
 	Clean() error
 }
 
 type BaseOperation struct {
-	TestName   string
-	Bucket     string
-	ObjectName string
-	ObjectSize uint64
+	TestName  string
+	Directory string
+	BlockSize uint64
+	Size      uint64
 }
 
 // ReadOperation stands for a read operation
@@ -35,8 +36,8 @@ type WriteOperation struct {
 	*BaseOperation
 }
 
-// ListOperation stands for a list operation
-type ListOperation struct {
+// StatOperation stands for a stat operation
+type StatOperation struct {
 	*BaseOperation
 }
 
@@ -49,62 +50,53 @@ type DeleteOperation struct {
 // maxOps as testCase end criterium
 type Stopper struct{}
 
-// KV is a simple key-value struct
-type KV struct {
-	Key   common.OpType
-	Value float64
-}
+// // KV is a simple key-value struct
+// type KV struct {
+// 	Key   common.OpType
+// 	Value float64
+// }
 
 // WorkQueue contains the Queue and the valid operation's
 // values to determine which operation should be done next
 // in order to satisfy the set ratios.
 type WorkQueue struct {
-	OperationValues []KV
-	Queue           []WorkItem
+	// OperationValues []KV
+	Queue []WorkItem
 }
-
-// // GetNextOperation evaluates the operation values and returns which
-// // operation should happen next
-// func GetNextOperation(queue *WorkQueue) string {
-// 	sort.Slice(queue.OperationValues, func(i, j int) bool {
-// 		return queue.OperationValues[i].Value < queue.OperationValues[j].Value
-// 	})
-// 	return queue.OperationValues[0].Key
-// }
-
-// // IncreaseOperationValue increases the given operation's value by the set amount
-// func IncreaseOperationValue(operation string, value float64, queue *WorkQueue) error {
-// 	for i := range queue.OperationValues {
-// 		if queue.OperationValues[i].Key == operation {
-// 			queue.OperationValues[i].Value += value
-// 			return nil
-// 		}
-// 	}
-// 	return fmt.Errorf("Could not find requested operation %s", operation)
-// }
 
 // Prepare prepares the execution of the ReadOperation
 func (op *ReadOperation) Prepare(conf *common.TestCaseConfiguration) error {
-	log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Preparing ReadOperation")
+	// log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Preparing ReadOperation")
 	return nil
 }
 
 // Prepare prepares the execution of the WriteOperation
 func (op *WriteOperation) Prepare(conf *common.TestCaseConfiguration) error {
-	log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Preparing WriteOperation")
-	return nil
+	log.WithField("dir", op.Directory).Debug("Preparing WriteOperation")
+
+	start := time.Now()
+	err := os.MkdirAll(op.Directory, 0755)
+	duration := time.Since(start)
+
+	promLatency.WithLabelValues(op.TestName, "MKDIR").Observe(float64(duration.Milliseconds()))
+	if err != nil {
+		promFailedOps.WithLabelValues(op.TestName, "MKDIR").Inc()
+	} else {
+		promFinishedOps.WithLabelValues(op.TestName, "MKDIR").Inc()
+	}
+	return err
 }
 
-// Prepare prepares the execution of the ListOperation
-func (op *ListOperation) Prepare(conf *common.TestCaseConfiguration) error {
-	log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Preparing ListOperation")
+// Prepare prepares the execution of the StatOperation
+func (op *StatOperation) Prepare(conf *common.TestCaseConfiguration) error {
+	// log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Preparing StatOperation")
 	// return putObject(housekeepingSvc, conf, op.BaseOperation)
 	return nil
 }
 
 // Prepare prepares the execution of the DeleteOperation
 func (op *DeleteOperation) Prepare(conf *common.TestCaseConfiguration) error {
-	log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Preparing DeleteOperation")
+	// log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Preparing DeleteOperation")
 	// check whether object is exist or not
 	// _, err := headObject(housekeepingSvc, op.ObjectName, op.Bucket)
 	// // object already exist
@@ -121,8 +113,8 @@ func (op *Stopper) Prepare(conf *common.TestCaseConfiguration) error {
 }
 
 // Do executes the actual work of the ReadOperation
-func (op *ReadOperation) Do(conf *common.TestCaseConfiguration) error {
-	log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Doing ReadOperation")
+func (op *ReadOperation) Do(conf *common.TestCaseConfiguration, index int) error {
+	// log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Doing ReadOperation")
 	start := time.Now()
 	var err error
 	// err := getObject(svc, conf, op.BaseOperation)
@@ -133,13 +125,13 @@ func (op *ReadOperation) Do(conf *common.TestCaseConfiguration) error {
 	} else {
 		promFinishedOps.WithLabelValues(op.TestName, "GET").Inc()
 	}
-	promDownloadedBytes.WithLabelValues(op.TestName, "GET").Add(float64(op.ObjectSize))
+	// promDownloadedBytes.WithLabelValues(op.TestName, "GET").Add(float64(op.ObjectSize))
 	return err
 }
 
 // Do executes the actual work of the WriteOperation
-func (op *WriteOperation) Do(conf *common.TestCaseConfiguration) error {
-	log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Doing WriteOperation")
+func (op *WriteOperation) Do(conf *common.TestCaseConfiguration, index int) error {
+	// log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Doing WriteOperation")
 	var err error
 	// err := putObject(svc, conf, op.BaseOperation)
 	if err != nil {
@@ -147,13 +139,13 @@ func (op *WriteOperation) Do(conf *common.TestCaseConfiguration) error {
 	} else {
 		promFinishedOps.WithLabelValues(op.TestName, "PUT").Inc()
 	}
-	promUploadedBytes.WithLabelValues(op.TestName, "PUT").Add(float64(op.ObjectSize))
+	// promUploadedBytes.WithLabelValues(op.TestName, "PUT").Add(float64(op.ObjectSize))
 	return err
 }
 
-// Do executes the actual work of the ListOperation
-func (op *ListOperation) Do(conf *common.TestCaseConfiguration) error {
-	log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Doing ListOperation")
+// Do executes the actual work of the StatOperation
+func (op *StatOperation) Do(conf *common.TestCaseConfiguration, index int) error {
+	// log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Doing StatOperation")
 	start := time.Now()
 	var err error
 	// _, err := listObjects(svc, op.ObjectName, op.Bucket)
@@ -168,8 +160,8 @@ func (op *ListOperation) Do(conf *common.TestCaseConfiguration) error {
 }
 
 // Do executes the actual work of the DeleteOperation
-func (op *DeleteOperation) Do(conf *common.TestCaseConfiguration) error {
-	log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Doing DeleteOperation")
+func (op *DeleteOperation) Do(conf *common.TestCaseConfiguration, index int) error {
+	// log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Doing DeleteOperation")
 	start := time.Now()
 	var err error
 	// err := deleteObject(svc, op.ObjectName, op.Bucket)
@@ -184,13 +176,13 @@ func (op *DeleteOperation) Do(conf *common.TestCaseConfiguration) error {
 }
 
 // Do does nothing here
-func (op *Stopper) Do(conf *common.TestCaseConfiguration) error {
+func (op *Stopper) Do(conf *common.TestCaseConfiguration, index int) error {
 	return nil
 }
 
 // Clean removes the objects and buckets left from the previous ReadOperation
 func (op *ReadOperation) Clean() error {
-	log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Cleaning up ReadOperation")
+	// log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Cleaning up ReadOperation")
 	// return deleteObject(housekeepingSvc, op.ObjectName, op.Bucket)
 	return nil
 }
@@ -201,8 +193,8 @@ func (op *WriteOperation) Clean() error {
 	return nil
 }
 
-// Clean removes the objects and buckets left from the previous ListOperation
-func (op *ListOperation) Clean() error {
+// Clean removes the objects and buckets left from the previous StatOperation
+func (op *StatOperation) Clean() error {
 	// return deleteObject(housekeepingSvc, op.ObjectName, op.Bucket)
 	return nil
 }

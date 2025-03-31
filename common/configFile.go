@@ -15,6 +15,7 @@ type OpType int
 
 const (
 	Read OpType = 1 << iota
+	// Mkdir
 	Write
 	Stat
 	Delete
@@ -25,6 +26,9 @@ func (t OpType) String() string {
 	if t&Read != 0 {
 		types = append(types, "read")
 	}
+	// if t&Mkdir != 0 {
+	// 	types = append(types, "mkdir")
+	// }
 	if t&Write != 0 {
 		types = append(types, "write")
 	}
@@ -43,6 +47,8 @@ func ToOpType(op string) OpType {
 		return Write
 	case "read":
 		return Read
+	// case "mkdir":
+	// 	return Mkdir
 	case "stat":
 		return Stat
 	case "delete":
@@ -82,6 +88,9 @@ func (s *FSD) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
+	if aux.Depth < 1 {
+		return fmt.Errorf("Minimum fs depth is 1")
+	}
 	size, err := ToBytes(aux.Size)
 	if err != nil {
 		return err
@@ -103,6 +112,9 @@ func (s *FSD) UnmarshalYAML(value *yaml.Node) error {
 	}
 	if err := value.Decode(&aux); err != nil {
 		return err
+	}
+	if aux.Depth < 1 {
+		return fmt.Errorf("Minimum fs depth is 1")
 	}
 	size, err := ToBytes(aux.Size)
 	if err != nil {
@@ -166,6 +178,7 @@ func (w *FWD) UnmarshalYAML(value *yaml.Node) error {
 
 // TestCaseConfiguration is the configuration of a performance test
 type TestCaseConfiguration struct {
+	// SkipPrepare      bool   `yaml:"skip_prepare" json:"skip_prepare"`
 	Name             string `yaml:"name" json:"name"`
 	FSD              *FSD   `yaml:"fsd" json:"fsd"`
 	FWD              *FWD   `yaml:"fwd" json:"fwd"`

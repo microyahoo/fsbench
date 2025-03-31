@@ -37,32 +37,32 @@ var (
 		prom.CounterOpts{
 			Name:      "finished_ops",
 			Namespace: namespace,
-			Help:      "Finished S3 operations",
+			Help:      "Finished fs operations",
 		}, []string{"testName", "method"})
 	promFailedOps = prom.NewCounterVec(
 		prom.CounterOpts{
 			Name:      "failed_ops",
 			Namespace: namespace,
-			Help:      "Failed S3 operations",
+			Help:      "Failed fs operations",
 		}, []string{"testName", "method"})
 	promLatency = prom.NewHistogramVec(
 		prom.HistogramOpts{
 			Name:      "ops_latency",
 			Namespace: namespace,
-			Help:      "Histogram latency(ms) of S3 operations",
+			Help:      "Histogram latency(ms) of fs operations",
 			Buckets:   prom.ExponentialBuckets(0.5, 2, 20),
 		}, []string{"testName", "method"})
 	promUploadedBytes = prom.NewCounterVec(
 		prom.CounterOpts{
 			Name:      "uploaded_bytes",
 			Namespace: namespace,
-			Help:      "Uploaded bytes to S3 store",
+			Help:      "Uploaded bytes to fs store",
 		}, []string{"testName", "method"})
 	promDownloadedBytes = prom.NewCounterVec(
 		prom.CounterOpts{
 			Name:      "downloaded_bytes",
 			Namespace: namespace,
-			Help:      "Downloaded bytes from S3 store",
+			Help:      "Downloaded bytes from fs store",
 		}, []string{"testName", "method"})
 	promGenBytesLatency = prom.NewHistogramVec(
 		prom.HistogramOpts{
