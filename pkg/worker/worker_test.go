@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/microyahoo/fsbench/common"
+	"github.com/microyahoo/fsbench/pkg/common"
 )
 
 func TestWorker(t *testing.T) {

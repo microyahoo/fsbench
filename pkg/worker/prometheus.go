@@ -11,7 +11,7 @@ import (
 	"go.opencensus.io/plugin/ochttp"
 	"go.opencensus.io/stats/view"
 
-	"github.com/microyahoo/fsbench/common"
+	"github.com/microyahoo/fsbench/pkg/common"
 )
 
 const (

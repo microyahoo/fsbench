@@ -8,7 +8,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/microyahoo/fsbench/common"
+	"github.com/microyahoo/fsbench/pkg/common"
 )
 
 // WorkItem is an interface for general work operations

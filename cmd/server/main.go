@@ -20,7 +20,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/microyahoo/fsbench/common"
+	"github.com/microyahoo/fsbench/pkg/common"
 )
 
 var (
