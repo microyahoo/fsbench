@@ -18,7 +18,6 @@ type workerSuite struct {
 
 func (s *workerSuite) Test_populateDirs() {
 	type args struct {
-		// testcase *TestConf
 		worker *Worker
 	}
 	tests := []struct {
@@ -47,22 +46,22 @@ func (s *workerSuite) Test_populateDirs() {
 				},
 			},
 		}}, []string{
-			"/volume/w1.fsd.0_0/fsd.1_0/fsd.2_0/fsd.3_0",
-			"/volume/w1.fsd.0_0/fsd.1_0/fsd.2_0/fsd.3_1",
-			"/volume/w1.fsd.0_0/fsd.1_0/fsd.2_1/fsd.3_0",
-			"/volume/w1.fsd.0_0/fsd.1_0/fsd.2_1/fsd.3_1",
-			"/volume/w1.fsd.0_0/fsd.1_1/fsd.2_0/fsd.3_0",
-			"/volume/w1.fsd.0_0/fsd.1_1/fsd.2_0/fsd.3_1",
-			"/volume/w1.fsd.0_0/fsd.1_1/fsd.2_1/fsd.3_0",
-			"/volume/w1.fsd.0_0/fsd.1_1/fsd.2_1/fsd.3_1",
-			"/volume/w1.fsd.0_1/fsd.1_0/fsd.2_0/fsd.3_0",
-			"/volume/w1.fsd.0_1/fsd.1_0/fsd.2_0/fsd.3_1",
-			"/volume/w1.fsd.0_1/fsd.1_0/fsd.2_1/fsd.3_0",
-			"/volume/w1.fsd.0_1/fsd.1_0/fsd.2_1/fsd.3_1",
-			"/volume/w1.fsd.0_1/fsd.1_1/fsd.2_0/fsd.3_0",
-			"/volume/w1.fsd.0_1/fsd.1_1/fsd.2_0/fsd.3_1",
-			"/volume/w1.fsd.0_1/fsd.1_1/fsd.2_1/fsd.3_0",
-			"/volume/w1.fsd.0_1/fsd.1_1/fsd.2_1/fsd.3_1",
+			"/volume/w1.fsb.0_0/fsb.1_0/fsb.2_0/fsb.3_0",
+			"/volume/w1.fsb.0_0/fsb.1_0/fsb.2_0/fsb.3_1",
+			"/volume/w1.fsb.0_0/fsb.1_0/fsb.2_1/fsb.3_0",
+			"/volume/w1.fsb.0_0/fsb.1_0/fsb.2_1/fsb.3_1",
+			"/volume/w1.fsb.0_0/fsb.1_1/fsb.2_0/fsb.3_0",
+			"/volume/w1.fsb.0_0/fsb.1_1/fsb.2_0/fsb.3_1",
+			"/volume/w1.fsb.0_0/fsb.1_1/fsb.2_1/fsb.3_0",
+			"/volume/w1.fsb.0_0/fsb.1_1/fsb.2_1/fsb.3_1",
+			"/volume/w1.fsb.0_1/fsb.1_0/fsb.2_0/fsb.3_0",
+			"/volume/w1.fsb.0_1/fsb.1_0/fsb.2_0/fsb.3_1",
+			"/volume/w1.fsb.0_1/fsb.1_0/fsb.2_1/fsb.3_0",
+			"/volume/w1.fsb.0_1/fsb.1_0/fsb.2_1/fsb.3_1",
+			"/volume/w1.fsb.0_1/fsb.1_1/fsb.2_0/fsb.3_0",
+			"/volume/w1.fsb.0_1/fsb.1_1/fsb.2_0/fsb.3_1",
+			"/volume/w1.fsb.0_1/fsb.1_1/fsb.2_1/fsb.3_0",
+			"/volume/w1.fsb.0_1/fsb.1_1/fsb.2_1/fsb.3_1",
 		}},
 	}
 	for _, tt := range tests {

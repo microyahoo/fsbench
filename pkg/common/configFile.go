@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/goccy/go-yaml"
 	log "github.com/sirupsen/logrus"
-	"gopkg.in/yaml.v3"
 )
 
 type OpType int
@@ -68,6 +68,14 @@ type S3Configuration struct {
 	SkipSSLVerify bool          `yaml:"skipSSLverify" json:"skipSSLverify"`
 	Name          string        `yaml:"name" json:"name"`
 }
+type fsdAlias struct {
+	Anchor   string `yaml:"anchor"`
+	DirectIO *bool  `yaml:"direct_io"`
+	Depth    uint64 `yaml:"depth"`
+	Width    uint64 `yaml:"width"`
+	Files    uint64 `yaml:"files"`
+	Size     string `yaml:"size"`
+}
 
 // filesystem define
 type FSD struct {
@@ -95,22 +103,43 @@ func (s *FSD) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	// *s = FSD(*aux.Alias)
 	s.Size = size
 
 	return nil
 }
 
-func (s *FSD) UnmarshalYAML(value *yaml.Node) error {
-	var aux struct {
-		Anchor   string `yaml:"anchor"`
-		DirectIO *bool  `yaml:"direct_io"`
-		Depth    uint64 `yaml:"depth"`
-		Width    uint64 `yaml:"width"`
-		Files    uint64 `yaml:"files"`
-		Size     string `yaml:"size"`
+func (s *FSD) MarshalJSON() ([]byte, error) {
+	type Alias FSD
+	aux := &struct {
+		*Alias
+		Size string `yaml:"size" json:"size"`
+	}{Alias: (*Alias)(s)}
+	size := ByteSize(s.Size)
+	aux.Size = size
+
+	return json.Marshal(aux)
+}
+
+func (s *FSD) MarshalYAML() ([]byte, error) {
+	size := ByteSize(s.Size)
+	aux := &fsdAlias{
+		Anchor:   s.Anchor,
+		DirectIO: s.DirectIO,
+		Depth:    s.Depth,
+		Width:    s.Width,
+		Files:    s.Files,
+		Size:     size,
 	}
-	if err := value.Decode(&aux); err != nil {
+
+	return yaml.Marshal(aux)
+}
+
+func (s *FSD) UnmarshalYAML(data []byte) error {
+	var (
+		aux fsdAlias
+		err error
+	)
+	if err := yaml.Unmarshal(data, &aux); err != nil {
 		return err
 	}
 	if aux.Depth < 1 {
@@ -126,7 +155,14 @@ func (s *FSD) UnmarshalYAML(value *yaml.Node) error {
 	s.Depth = aux.Depth
 	s.Width = aux.Width
 	s.Files = aux.Files
+
 	return nil
+}
+
+type fwdAlias struct {
+	Operations []string `yaml:"operations" json:"operations"` // will override global config
+	Threads    []uint64 `yaml:"threads" json:"threads"`       // will override global config
+	BlockSize  string   `yaml:"block_size" json:"block_size"` // 4k, 1m, 1g
 }
 
 // filesystem workload define
@@ -142,8 +178,7 @@ func (w *FWD) UnmarshalJSON(data []byte) error {
 		*Alias
 		BlockSize string `yaml:"block_size" json:"block_size"` // 4k, 1m, 1g
 	}{Alias: (*Alias)(w)}
-	err := json.Unmarshal(data, aux)
-	if err != nil {
+	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
 	bs, err := ToBytes(aux.BlockSize)
@@ -155,18 +190,40 @@ func (w *FWD) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (w *FWD) UnmarshalYAML(value *yaml.Node) error {
-	var aux struct {
-		Operations []string `yaml:"operations"`
-		Threads    []uint64 `yaml:"threads"`
-		BlockSize  string   `yaml:"block_size"`
+func (w *FWD) MarshalJSON() ([]byte, error) {
+	type Alias FWD
+	aux := &struct {
+		*Alias
+		BlockSize string `yaml:"block_size" json:"block_size"` // 4k, 1m, 1g
+	}{Alias: (*Alias)(w)}
+	bs := ByteSize(w.BlockSize)
+	aux.BlockSize = bs
+
+	return json.Marshal(aux)
+}
+
+func (w *FWD) MarshalYAML() ([]byte, error) {
+	bs := ByteSize(w.BlockSize)
+	aux := &fwdAlias{
+		BlockSize:  bs,
+		Operations: w.Operations,
+		Threads:    w.Threads,
 	}
-	err := value.Decode(&aux)
-	if err != nil {
+
+	return yaml.Marshal(aux)
+}
+
+func (w *FWD) UnmarshalYAML(data []byte) error {
+	type Alias FWD
+	var (
+		aux fwdAlias
+		err error
+		bs  uint64
+	)
+	if err = yaml.Unmarshal(data, &aux); err != nil {
 		return err
 	}
-	bs, err := ToBytes(aux.BlockSize)
-	if err != nil {
+	if bs, err = ToBytes(aux.BlockSize); err != nil {
 		return err
 	}
 	w.BlockSize = bs
@@ -183,6 +240,7 @@ type TestCaseConfiguration struct {
 	FSD              *FSD   `yaml:"fsd" json:"fsd"`
 	FWD              *FWD   `yaml:"fwd" json:"fwd"`
 	PayloadGenerator string `yaml:"payload_generator" json:"payload_generator"` // empty or random
+	ClearDirs        bool   `yaml:"clear_dirs" json:"clear_dirs"`
 }
 
 type ClientConfiguration struct {
@@ -199,7 +257,7 @@ type TestConf struct {
 }
 
 type GlobalConfiguration struct {
-	ReorderTasks bool     `yaml:"reorder_tasks" json:"reorder_tasks"`
+	ReorderTasks bool     `yaml:"reorder_tasks" json:"reorder_tasks"` // having a different node read/stat back data than wrote it
 	Anchor       string   `yaml:"anchor" json:"anchor"`
 	DirectIO     *bool    `yaml:"direct_io" json:"direct_io"`
 	Threads      []uint64 `yaml:"threads" json:"threads"`
@@ -221,7 +279,6 @@ type WorkerConf struct {
 	ID              int
 	Op              OpType // write, read, stat, delete
 	ParallelClients int
-	ReorderTasks    bool // TODO: delete it
 }
 
 // BenchResult is the struct that will contain the benchmark results from a
@@ -237,11 +294,9 @@ type BenchmarkResult struct {
 	BandwidthAvg       float64
 	LatencyAvg         float64
 	GenBytesLatencyAvg float64
-	IOCopyLatencyAvg   float64
 	Duration           time.Duration
 	Type               OpType
 	ObjectSize         uint64
-	S3Endpoint         string // just for debug
 }
 
 // WorkerMessage is the struct that is exchanged in the communication between
@@ -317,12 +372,12 @@ func LoadConfigFromFile(configFile string) *TestConf {
 	if strings.HasSuffix(configFile, ".yaml") || strings.HasSuffix(configFile, ".yml") {
 		err = yaml.Unmarshal(configFileContent, &config)
 		if err != nil {
-			log.WithError(err).Fatalf("Error unmarshaling yaml config file:")
+			log.WithError(err).Fatalf("Error unmarshaling yaml config file: %s", configFile)
 		}
 	} else if strings.HasSuffix(configFile, ".json") {
 		err = json.Unmarshal(configFileContent, &config)
 		if err != nil {
-			log.WithError(err).Fatalf("Error unmarshaling json config file:")
+			log.WithError(err).Fatalf("Error unmarshaling json config file: %s", configFile)
 		}
 	} else {
 		log.WithError(err).Fatalf("Configuration file must be a yaml or json formatted file")

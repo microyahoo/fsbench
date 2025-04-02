@@ -1,9 +1,11 @@
 package common
 
 import (
+	"encoding/json"
 	"os"
 	"testing"
 
+	"github.com/goccy/go-yaml"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -517,6 +519,105 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
 			if got := LoadConfigFromFile("configFile.json"); !s.EqualValues(tt.want, got) {
 				t.Errorf("loadConfigFromFile() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func (s *configFileTestSuite) Test_marshal_unmarshal_fsd() {
+	type args struct {
+		fsd *FSD
+	}
+	tbool := true
+	tests := []struct {
+		name string
+		args args
+		want *FSD
+	}{
+		{
+			name: "marshal and unmarshal",
+			args: args{
+				fsd: &FSD{
+					Anchor:   "/volume",
+					DirectIO: &tbool,
+					Depth:    10,
+					Width:    20,
+					Files:    30,
+					Size:     4096,
+				},
+			},
+			want: &FSD{
+				Anchor:   "/volume",
+				DirectIO: &tbool,
+				Depth:    10,
+				Width:    20,
+				Files:    30,
+				Size:     4096,
+			},
+		},
+	}
+	for _, tt := range tests {
+		s.T().Run(tt.name, func(t *testing.T) {
+			bytes, err := json.Marshal(tt.args.fsd)
+			s.NoError(err)
+			s.T().Logf("**bytes: %s", string(bytes))
+			var fsd1 *FSD
+			err = json.Unmarshal(bytes, &fsd1)
+			s.NoError(err)
+			s.EqualValues(tt.want, fsd1)
+
+			var fsd2 FSD
+			bytes, err = yaml.Marshal(tt.args.fsd)
+			s.NoError(err)
+			s.T().Logf("**bytes: %s", string(bytes))
+			err = yaml.Unmarshal(bytes, &fsd2)
+			s.NoError(err)
+			s.EqualValues(tt.want, &fsd2)
+		})
+	}
+}
+
+func (s *configFileTestSuite) Test_marshal_unmarshal_fwd() {
+	type args struct {
+		fwd *FWD
+	}
+	tests := []struct {
+		name string
+		args args
+		want *FWD
+	}{
+		{
+			name: "marshal and unmarshal",
+			args: args{
+				fwd: &FWD{
+					Threads:    []uint64{4, 8, 16, 32, 64},
+					Operations: []string{"write", "read", "stat", "delete"},
+					BlockSize:  4096,
+				},
+			},
+			want: &FWD{
+				Threads:    []uint64{4, 8, 16, 32, 64},
+				Operations: []string{"write", "read", "stat", "delete"},
+				BlockSize:  4096,
+			},
+		},
+	}
+	for _, tt := range tests {
+		s.T().Run(tt.name, func(t *testing.T) {
+			bytes, err := json.Marshal(tt.args.fwd)
+			s.NoError(err)
+			s.T().Logf("**bytes: %s", string(bytes))
+			var fwd1 *FWD
+			err = json.Unmarshal(bytes, &fwd1)
+			s.NoError(err)
+			s.EqualValues(tt.want, fwd1)
+
+			var fwd2 FWD
+			bytes, err = yaml.Marshal(tt.args.fwd)
+			s.NoError(err)
+			s.T().Logf("**bytes: %s", string(bytes))
+			err = yaml.Unmarshal(bytes, &fwd2)
+			s.NoError(err)
+			s.EqualValues(tt.want, &fwd2)
 		})
 	}
 }

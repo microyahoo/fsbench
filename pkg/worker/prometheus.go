@@ -77,13 +77,6 @@ var (
 			Namespace: namespace,
 			Help:      "Generated random bytes size of put object",
 		}, []string{"testName"})
-	promIOCopyLatency = prom.NewHistogramVec(
-		prom.HistogramOpts{
-			Name:      "io_copy_latency",
-			Namespace: namespace,
-			Help:      "Histogram latency(ms) of copying object body",
-			Buckets:   prom.ExponentialBuckets(0.001, 2, 18),
-		}, []string{"testName"})
 )
 
 func NewHandler() http.Handler {
@@ -106,9 +99,6 @@ func NewHandler() http.Handler {
 		}
 		if err = promRegistry.Register(promGenBytesLatency); err != nil {
 			log.WithError(err).Error("Issues when adding gen_bytes_latency histogram to Prometheus registry")
-		}
-		if err = promRegistry.Register(promIOCopyLatency); err != nil {
-			log.WithError(err).Error("Issues when adding io_copy_latency histogram to Prometheus registry")
 		}
 		if err = promRegistry.Register(promGenBytesSize); err != nil {
 			log.WithError(err).Error("Issues when adding gen_bytes_size gauge to Prometheus registry")
@@ -164,7 +154,6 @@ func (w *Worker) getCurrentPromValues() common.BenchmarkResult {
 	benchResult.Bytes = sumCounterForTest(resultmap["fsbench_uploaded_bytes"], testName) + sumCounterForTest(resultmap["fsbench_downloaded_bytes"], testName)
 	benchResult.LatencyAvg = averageHistogramForTest(resultmap["fsbench_ops_latency"], testName)
 	benchResult.GenBytesLatencyAvg = averageHistogramForTest(resultmap["fsbench_gen_bytes_latency"], testName)
-	benchResult.IOCopyLatencyAvg = averageHistogramForTest(resultmap["fsbench_io_copy_latency"], testName)
 
 	return benchResult
 }

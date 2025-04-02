@@ -59,15 +59,15 @@ func newCommand() *cobra.Command {
 	cmds.Flags().BoolVar(&trace, "trace", viper.GetBool("TRACE"), "enable trace log output")
 	cmds.Flags().IntVar(&serverPort, "server.port", viper.GetInt("SERVERPORT"), "Port on which the server will be available for clients. Default: 2000")
 
-	cmds.MarkFlagRequired("config.file")
+	// cmds.MarkFlagRequired("config.file")
 
 	return cmds
 }
 
 func run() {
-	// if configFile == "" {
-	// 	log.Fatal("--config.file is a mandatory parameter - please specify the config file")
-	// }
+	if configFile == "" {
+		log.Fatal("--config.file is a mandatory parameter - please specify the config file")
+	}
 	if debug {
 		log.SetLevel(log.DebugLevel)
 	} else if trace {
@@ -131,14 +131,14 @@ func run() {
 
 func (s *Server) scheduleTests(readyWorkers <-chan *net.Conn) {
 	var (
-		// reorderTasks = true
+		reorderTasks      = true
 		results           []*common.BenchmarkResult
 		workerConnections []*net.Conn
 	)
 	gc := s.config.GlobalConfig
-	// if gc != nil && !gc.ReorderTasks {
-	// reorderTasks = false
-	// }
+	if gc != nil && !gc.ReorderTasks {
+		reorderTasks = false
+	}
 	workers := gc.Workers
 	for worker := 0; worker < workers; worker++ {
 		// Waiting for all worker connections ready
@@ -154,15 +154,17 @@ func (s *Server) scheduleTests(readyWorkers <-chan *net.Conn) {
 				continueWorkers := make(chan bool, workers)
 
 				for worker := 0; worker < workers; worker++ {
+					workerID := fmt.Sprintf("w%d", worker)
+					if op != common.Write.String() && reorderTasks { // having a different node read/stat back data than wrote it
+						workerID = fmt.Sprintf("w%d", (worker+1)%workers)
+					}
 					workerConfig := &common.WorkerConf{
-						Test:     test,
-						WorkerID: fmt.Sprintf("w%d", worker),
-						ID:       worker,
-						// ReorderTasks:    reorderTasks,
+						Test:            test,
+						WorkerID:        workerID,
+						ID:              worker,
 						Op:              common.ToOpType(op),
 						ParallelClients: int(thread),
 					}
-					// workerConnection := <-readyWorkers
 					workerConnection := workerConnections[worker]
 					log.WithField("Worker", (*workerConnection).RemoteAddr()).Infof("We found worker %d / %d for test #%d",
 						worker+1, workers, testNumber)
@@ -186,40 +188,29 @@ func (s *Server) scheduleTests(readyWorkers <-chan *net.Conn) {
 				log.WithField("test", test.Name).Info("All workers have finished the performance test - continuing with next test")
 				stopTime := time.Now().UTC()
 				log.WithField("test", test.Name).Infof("GRAFANA: ?from=%d&to=%d", startTime.UnixNano()/int64(1000000), stopTime.UnixNano()/int64(1000000))
-				// benchResult := sumBenchmarkResults(benchResults)
-				// benchResult.Duration = stopTime.Sub(startTime)
-				// benchResult.ParallelClients = float64(test.ParallelClients)
-				// benchResult.Workers = float64(workers)
-				// benchResult.ObjectSize = (test.Objects.SizeMin + test.Objects.SizeMax) / 2 // TODO: not exact
-				// if test.ReadWeight > 0 {
-				// 	benchResult.Type |= common.Read
-				// }
-				// if test.WriteWeight > 0 {
-				// 	benchResult.Type |= common.Write
-				// }
-				// if test.DeleteWeight > 0 {
-				// 	benchResult.Type |= common.Delete
-				// }
-				// if test.ListWeight > 0 {
-				// 	benchResult.Type |= common.List
-				// }
+				benchResult := sumBenchmarkResults(benchResults)
+				benchResult.Duration = stopTime.Sub(startTime)
+				benchResult.ParallelClients = float64(thread)
+				benchResult.Workers = float64(workers)
+				benchResult.ObjectSize = test.FSD.Size
+				benchResult.Type = common.ToOpType(op)
 
-				// log.WithField("test", test.Name).
-				// 	WithField("Successful Operations", benchResult.SuccessfulOperations).
-				// 	WithField("Failed Operations", benchResult.FailedOperations).
-				// 	WithField("Total MBytes", benchResult.Bytes/1024/1024).
-				// 	WithField("Average BW in MByte/s", benchResult.BandwidthAvg/1024/1024).
-				// 	WithField("Average latency in ms", benchResult.LatencyAvg).
-				// 	WithField("Gen Bytes Average latency in ms", benchResult.GenBytesLatencyAvg).
-				// 	WithField("Workers", benchResult.Workers).
-				// 	WithField("Type", benchResult.Type).
-				// 	WithField("Object size(not exact)", common.ByteSize(benchResult.ObjectSize)).          // TODO: not exact
-				// 	WithField("Ops(not exact)", benchResult.BandwidthAvg/float64(benchResult.ObjectSize)). // TODO: not exact
-				// 	WithField("Parallel clients", benchResult.ParallelClients).
-				// 	WithField("Test runtime on server", benchResult.Duration).
-				// 	Infof("PERF RESULTS")
-				// writeResultToCSV(benchResult)
-				// results = append(results, &benchResult)
+				log.WithField("test", test.Name).
+					WithField("Successful Operations", benchResult.SuccessfulOperations).
+					WithField("Failed Operations", benchResult.FailedOperations).
+					WithField("Total MBytes", benchResult.Bytes/1024/1024).
+					WithField("Average BW in MByte/s", benchResult.BandwidthAvg/1024/1024).
+					WithField("Average latency in ms", benchResult.LatencyAvg).
+					WithField("Gen Bytes Average latency in ms", benchResult.GenBytesLatencyAvg).
+					WithField("Workers", benchResult.Workers).
+					WithField("Type", benchResult.Type).
+					WithField("Object size", common.ByteSize(benchResult.ObjectSize)).
+					WithField("Ops", benchResult.BandwidthAvg/float64(benchResult.ObjectSize)).
+					WithField("Parallel clients", benchResult.ParallelClients).
+					WithField("Test runtime on server", benchResult.Duration).
+					Infof("PERF RESULTS")
+				writeResultToCSV(benchResult)
+				results = append(results, &benchResult)
 			}
 		}
 	}
@@ -234,6 +225,11 @@ func (s *Server) scheduleTests(readyWorkers <-chan *net.Conn) {
 func executeTestOnWorker(conn *net.Conn, config *common.WorkerConf, doneChannel chan bool, continueWorkers chan bool, resultChannel chan common.BenchmarkResult) {
 	encoder := json.NewEncoder(*conn)
 	decoder := json.NewDecoder(*conn)
+	log.WithField("op", config.Op).
+		WithField("parallel-clients", config.ParallelClients).
+		WithField("test-fsd", config.Test.FSD).
+		WithField("test-fwd", config.Test.FWD).
+		Infof("Start to send test config to clients")
 	_ = encoder.Encode(common.WorkerMessage{Message: "init", Config: config})
 
 	var response common.WorkerMessage
@@ -270,19 +266,16 @@ func sumBenchmarkResults(results []common.BenchmarkResult) common.BenchmarkResul
 	bandwidthAverages := float64(0)
 	latencyAverages := float64(0)
 	genBytesLatencyAverages := float64(0)
-	ioCopyLatencyAverages := float64(0)
 	for _, result := range results {
 		sum.Bytes += result.Bytes
 		sum.SuccessfulOperations += result.SuccessfulOperations
 		sum.FailedOperations += result.FailedOperations
 		latencyAverages += result.LatencyAvg
 		genBytesLatencyAverages += result.GenBytesLatencyAvg
-		ioCopyLatencyAverages += result.IOCopyLatencyAvg
 		bandwidthAverages += result.BandwidthAvg
 	}
 	sum.LatencyAvg = latencyAverages / float64(len(results))
 	sum.GenBytesLatencyAvg = genBytesLatencyAverages / float64(len(results))
-	sum.IOCopyLatencyAvg = ioCopyLatencyAverages / float64(len(results))
 	sum.TestName = results[0].TestName
 	sum.BandwidthAvg = bandwidthAverages
 
@@ -309,7 +302,6 @@ func writeResultToCSV(benchResult common.BenchmarkResult) {
 			"Op/s",
 			"Average Latency in ms",
 			"Gen Bytes Average Latency in ms",
-			"IO Copy Average Latency in ms",
 			"Workers",
 			"Parallel clients",
 			"Test duration seen by server in seconds",
@@ -329,7 +321,6 @@ func writeResultToCSV(benchResult common.BenchmarkResult) {
 		fmt.Sprintf("%.2f", benchResult.BandwidthAvg/float64(benchResult.ObjectSize)),
 		fmt.Sprintf("%f", benchResult.LatencyAvg),
 		fmt.Sprintf("%f", benchResult.GenBytesLatencyAvg),
-		fmt.Sprintf("%f", benchResult.IOCopyLatencyAvg),
 		fmt.Sprintf("%f", benchResult.Workers),
 		fmt.Sprintf("%f", benchResult.ParallelClients),
 		fmt.Sprintf("%f", benchResult.Duration.Seconds()),
@@ -373,6 +364,7 @@ func (s *Server) generateResults(results []*common.BenchmarkResult) {
 		format = s.config.ReportConfig.Format
 	}
 	outputFile := fmt.Sprintf("/tmp/fsbench_results_%d.%s", time.Now().UnixMilli(), format)
+	log.Infof("Start to generate benchmark results to %s", outputFile)
 	{
 		f, err := os.Create(outputFile)
 		if err != nil {
@@ -383,7 +375,7 @@ func (s *Server) generateResults(results []*common.BenchmarkResult) {
 			t.SetOutputMirror(f)
 		}
 		t.AppendHeader(table.Row{"type", "object-size(KB)", "workers", "parallel-clients", "avg-bandwidth(MB/s)", "ops", "avg-latency(ms)",
-			"gen-bytes-avg-latency(ms)", "io-copy-avg-latency(ms)", "successful-ops", "failed-ops", "duration", "total-mbytes", "name",
+			"gen-bytes-avg-latency(ms)", "successful-ops", "failed-ops", "duration", "total-mbytes", "name",
 		})
 		for _, r := range results {
 			t.AppendRow(table.Row{
@@ -395,7 +387,6 @@ func (s *Server) generateResults(results []*common.BenchmarkResult) {
 				fmt.Sprintf("%.2f", r.BandwidthAvg/float64(r.ObjectSize)),
 				fmt.Sprintf("%.2f", r.LatencyAvg),
 				fmt.Sprintf("%.2f", r.GenBytesLatencyAvg),
-				fmt.Sprintf("%.2f", r.IOCopyLatencyAvg),
 				r.SuccessfulOperations,
 				r.FailedOperations,
 				r.Duration.Round(time.Second),
@@ -417,7 +408,6 @@ func (s *Server) generateResults(results []*common.BenchmarkResult) {
 			{Number: 11, Align: text.AlignCenter},
 			{Number: 12, Align: text.AlignCenter},
 			{Number: 13, Align: text.AlignCenter},
-			{Number: 14, Align: text.AlignCenter},
 		})
 		t.SortBy([]table.SortBy{
 			{
@@ -450,6 +440,7 @@ func (s *Server) generateResults(results []*common.BenchmarkResult) {
 	}
 
 	s3Config := s.config.ReportConfig.S3Config
+	log.Infof("Start to upload benchmark results to s3 endpoint %s", s3Config.Endpoint)
 	ctx := context.Background()
 	client, e := common.NewS3Client(ctx, s3Config.Endpoint, s3Config.AccessKey, s3Config.SecretKey, s3Config.Region, s3Config.SkipSSLVerify)
 	if e != nil {

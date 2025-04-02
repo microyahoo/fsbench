@@ -63,7 +63,7 @@ func (w *Worker) ConnectToServer(serverAddress string) error {
 	for {
 		err := decoder.Decode(&response)
 		if err != nil {
-			log.WithField("message", response).WithError(err).Error("Server responded unusually - reconnecting")
+			log.WithError(err).Error("Server responded unusually - reconnecting")
 			return errors.New("Issue when receiving work from server")
 		}
 		log.Tracef("Response: %+v", response)
@@ -73,7 +73,11 @@ func (w *Worker) ConnectToServer(serverAddress string) error {
 			w.config = config
 			w.parallelClients = config.ParallelClients
 			w.workQueue = &WorkQueue{} // init or reset work queue
-			log.Infof("Got config %+v for worker %s from server with reorder tasks(%t)- starting preparations now", config.Test, config.WorkerID, config.ReorderTasks)
+			log.WithField("op", response.Config.Op).
+				WithField("parallel-clients", response.Config.ParallelClients).
+				WithField("fsd", response.Config.Test.FSD).
+				WithField("fwd", response.Config.Test.FWD).
+				Infof("Got config for worker %s from server - starting preparations now", config.WorkerID)
 
 			w.fillWorkqueue()
 
@@ -141,6 +145,16 @@ func (w *Worker) perfTest() time.Duration {
 	endTime := time.Now().UTC()
 	promTestEnd.WithLabelValues(testConfig.Name).Set(float64(endTime.UnixNano() / int64(1000000)))
 
+	if w.config.Op == common.Delete && w.config.Test.ClearDirs {
+		log.Info("Housekeeping started")
+		for _, work := range w.workQueue.Queue {
+			if err := work.Clean(); err != nil {
+				log.WithError(err).Error("Error during cleanup - ignoring")
+			}
+		}
+		log.Info("Housekeeping finished")
+	}
+
 	return endTime.Sub(startTime)
 }
 
@@ -168,9 +182,9 @@ func (w *Worker) populateLevel(currentPath string, currentDepth uint64) []string
 
 	if currentDepth < w.config.Test.FSD.Depth {
 		for i := uint64(0); i < w.config.Test.FSD.Width; i++ {
-			subDir := fmt.Sprintf("fsd.%d_%d", currentDepth, i)
+			subDir := fmt.Sprintf("fsb.%d_%d", currentDepth, i)
 			if currentDepth == 0 {
-				subDir = fmt.Sprintf("%s.fsd.%d_%d", w.config.WorkerID, currentDepth, i)
+				subDir = fmt.Sprintf("%s.fsb.%d_%d", w.config.WorkerID, currentDepth, i)
 			}
 			dirPath := filepath.Join(currentPath, subDir)
 			dirs = append(dirs, w.populateLevel(dirPath, currentDepth+1)...)
@@ -186,6 +200,7 @@ func (w *Worker) fillWorkqueue() {
 	testConfig := w.config.Test
 	dirs := w.populateDirs()
 
+	// TODO: refactor it
 	switch w.config.Op {
 	case common.Write:
 		for _, dir := range dirs {
@@ -208,9 +223,25 @@ func (w *Worker) fillWorkqueue() {
 			w.workQueue.Queue = append(w.workQueue.Queue, new)
 		}
 	case common.Stat:
-		// TODO
+		for _, dir := range dirs {
+			new := &StatOperation{
+				BaseOperation: &BaseOperation{
+					TestName:  testConfig.Name,
+					Directory: dir,
+				},
+			}
+			w.workQueue.Queue = append(w.workQueue.Queue, new)
+		}
 	case common.Delete:
-		// TODO
+		for _, dir := range dirs {
+			new := &DeleteOperation{
+				BaseOperation: &BaseOperation{
+					TestName:  testConfig.Name,
+					Directory: dir,
+				},
+			}
+			w.workQueue.Queue = append(w.workQueue.Queue, new)
+		}
 	default:
 		panic(fmt.Sprintf("Invalid filesystem op: %s", w.config.Op))
 	}

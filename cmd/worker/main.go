@@ -51,15 +51,15 @@ func newCommand() *cobra.Command {
 	cmds.Flags().StringVar(&serverAddress, "server.address", viper.GetString("SERVERADDRESS"), "Fsbench Server IP and Port in the form '191.168.1.1:2000'")
 	cmds.Flags().IntVar(&prometheusPort, "prometheus.port", viper.GetInt("PROMETHEUSPORT"), "Port on which the Prometheus Exporter will be available. Default: 8888")
 
-	cmds.MarkFlagRequired("server.address")
+	// cmds.MarkFlagRequired("server.address")
 
 	return cmds
 }
 
 func run() {
-	// if serverAddress == "" {
-	// 	log.Fatal("--server.address is a mandatory parameter - please specify the server IP and Port")
-	// }
+	if serverAddress == "" {
+		log.Fatal("--server.address is a mandatory parameter - please specify the server IP and Port")
+	}
 
 	if debug {
 		log.SetLevel(log.DebugLevel)

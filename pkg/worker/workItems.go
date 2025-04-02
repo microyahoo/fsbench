@@ -1,9 +1,8 @@
 package worker
 
 import (
-	"math/rand"
+	"fmt"
 	"os"
-	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -22,8 +21,10 @@ type WorkItem interface {
 type BaseOperation struct {
 	TestName  string
 	Directory string
-	BlockSize uint64
-	Size      uint64
+}
+
+func (b *BaseOperation) fileName(index int) string {
+	return fmt.Sprintf("bat.%d", index)
 }
 
 // ReadOperation stands for a read operation
@@ -50,23 +51,15 @@ type DeleteOperation struct {
 // maxOps as testCase end criterium
 type Stopper struct{}
 
-// // KV is a simple key-value struct
-// type KV struct {
-// 	Key   common.OpType
-// 	Value float64
-// }
-
 // WorkQueue contains the Queue and the valid operation's
 // values to determine which operation should be done next
 // in order to satisfy the set ratios.
 type WorkQueue struct {
-	// OperationValues []KV
 	Queue []WorkItem
 }
 
 // Prepare prepares the execution of the ReadOperation
 func (op *ReadOperation) Prepare(conf *common.TestCaseConfiguration) error {
-	// log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Preparing ReadOperation")
 	return nil
 }
 
@@ -89,21 +82,11 @@ func (op *WriteOperation) Prepare(conf *common.TestCaseConfiguration) error {
 
 // Prepare prepares the execution of the StatOperation
 func (op *StatOperation) Prepare(conf *common.TestCaseConfiguration) error {
-	// log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Preparing StatOperation")
-	// return putObject(housekeepingSvc, conf, op.BaseOperation)
 	return nil
 }
 
 // Prepare prepares the execution of the DeleteOperation
 func (op *DeleteOperation) Prepare(conf *common.TestCaseConfiguration) error {
-	// log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Preparing DeleteOperation")
-	// check whether object is exist or not
-	// _, err := headObject(housekeepingSvc, op.ObjectName, op.Bucket)
-	// // object already exist
-	// if err == nil {
-	// 	return nil
-	// }
-	// return putObject(housekeepingSvc, conf, op.BaseOperation)
 	return nil
 }
 
@@ -114,57 +97,97 @@ func (op *Stopper) Prepare(conf *common.TestCaseConfiguration) error {
 
 // Do executes the actual work of the ReadOperation
 func (op *ReadOperation) Do(conf *common.TestCaseConfiguration, index int) error {
-	// log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Doing ReadOperation")
-	start := time.Now()
-	var err error
-	// err := getObject(svc, conf, op.BaseOperation)
+	fileName := op.fileName(index)
+	log.WithField("dir", op.Directory).WithField("filename", fileName).Debug("Doing ReadOperation")
+	var (
+		err    error
+		direct = *conf.FSD.DirectIO
+		fsize  = conf.FSD.Size
+		bsize  = conf.FWD.BlockSize
+		start  = time.Now()
+	)
+	c := NewOSClient(op.Directory, int(fsize), int(bsize),
+		WithDirectIO(direct),
+		WithPayloadGenerator(conf.PayloadGenerator),
+		WithTestName(conf.Name))
+	err = c.Read(fileName)
+
 	duration := time.Since(start)
-	promLatency.WithLabelValues(op.TestName, "GET").Observe(float64(duration.Milliseconds()))
+	promLatency.WithLabelValues(op.TestName, "READ").Observe(float64(duration.Milliseconds()))
 	if err != nil {
-		promFailedOps.WithLabelValues(op.TestName, "GET").Inc()
+		promFailedOps.WithLabelValues(op.TestName, "READ").Inc()
 	} else {
-		promFinishedOps.WithLabelValues(op.TestName, "GET").Inc()
+		promFinishedOps.WithLabelValues(op.TestName, "READ").Inc()
 	}
-	// promDownloadedBytes.WithLabelValues(op.TestName, "GET").Add(float64(op.ObjectSize))
+	promDownloadedBytes.WithLabelValues(op.TestName, "READ").Add(float64(fsize))
 	return err
 }
 
 // Do executes the actual work of the WriteOperation
 func (op *WriteOperation) Do(conf *common.TestCaseConfiguration, index int) error {
-	// log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Doing WriteOperation")
-	var err error
-	// err := putObject(svc, conf, op.BaseOperation)
+	fileName := op.fileName(index)
+	log.WithField("dir", op.Directory).WithField("filename", fileName).Debug("Doing WriteOperation")
+	var (
+		err    error
+		direct = *conf.FSD.DirectIO
+		fsize  = conf.FSD.Size
+		bsize  = conf.FWD.BlockSize
+		start  = time.Now()
+	)
+	c := NewOSClient(op.Directory, int(fsize), int(bsize),
+		WithDirectIO(direct),
+		WithPayloadGenerator(conf.PayloadGenerator),
+		WithTestName(conf.Name))
+	err = c.Write(fileName)
+
+	duration := time.Since(start)
+	promLatency.WithLabelValues(op.TestName, "WRITE").Observe(float64(duration.Milliseconds()))
 	if err != nil {
-		promFailedOps.WithLabelValues(op.TestName, "PUT").Inc()
+		promFailedOps.WithLabelValues(op.TestName, "WRITE").Inc()
 	} else {
-		promFinishedOps.WithLabelValues(op.TestName, "PUT").Inc()
+		promFinishedOps.WithLabelValues(op.TestName, "WRITE").Inc()
 	}
-	// promUploadedBytes.WithLabelValues(op.TestName, "PUT").Add(float64(op.ObjectSize))
+	promUploadedBytes.WithLabelValues(op.TestName, "WRITE").Add(float64(fsize))
+
 	return err
 }
 
 // Do executes the actual work of the StatOperation
 func (op *StatOperation) Do(conf *common.TestCaseConfiguration, index int) error {
-	// log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Doing StatOperation")
-	start := time.Now()
-	var err error
-	// _, err := listObjects(svc, op.ObjectName, op.Bucket)
+	fileName := op.fileName(index)
+	log.WithField("dir", op.Directory).WithField("filename", fileName).Debug("Doing StatOperation")
+	var (
+		err   error
+		fsize = conf.FSD.Size
+		bsize = conf.FWD.BlockSize
+		start = time.Now()
+	)
+	c := NewOSClient(op.Directory, int(fsize), int(bsize))
+	_, err = c.Stat(fileName)
+
 	duration := time.Since(start)
-	promLatency.WithLabelValues(op.TestName, "LIST").Observe(float64(duration.Milliseconds()))
+	promLatency.WithLabelValues(op.TestName, "STAT").Observe(float64(duration.Milliseconds()))
 	if err != nil {
-		promFailedOps.WithLabelValues(op.TestName, "LIST").Inc()
+		promFailedOps.WithLabelValues(op.TestName, "STAT").Inc()
 	} else {
-		promFinishedOps.WithLabelValues(op.TestName, "LIST").Inc()
+		promFinishedOps.WithLabelValues(op.TestName, "STAT").Inc()
 	}
 	return err
 }
 
 // Do executes the actual work of the DeleteOperation
 func (op *DeleteOperation) Do(conf *common.TestCaseConfiguration, index int) error {
-	// log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Doing DeleteOperation")
-	start := time.Now()
-	var err error
-	// err := deleteObject(svc, op.ObjectName, op.Bucket)
+	fileName := op.fileName(index)
+	log.WithField("dir", op.Directory).WithField("filename", fileName).Debug("Doing DeleteOperation")
+	var (
+		err   error
+		fsize = conf.FSD.Size
+		bsize = conf.FWD.BlockSize
+		start = time.Now()
+	)
+	c := NewOSClient(op.Directory, int(fsize), int(bsize))
+	err = c.Delete(fileName)
+
 	duration := time.Since(start)
 	promLatency.WithLabelValues(op.TestName, "DELETE").Observe(float64(duration.Milliseconds()))
 	if err != nil {
@@ -182,78 +205,26 @@ func (op *Stopper) Do(conf *common.TestCaseConfiguration, index int) error {
 
 // Clean removes the objects and buckets left from the previous ReadOperation
 func (op *ReadOperation) Clean() error {
-	// log.WithField("bucket", op.Bucket).WithField("object", op.ObjectName).Debug("Cleaning up ReadOperation")
-	// return deleteObject(housekeepingSvc, op.ObjectName, op.Bucket)
 	return nil
 }
 
 // Clean removes the objects and buckets left from the previous WriteOperation
 func (op *WriteOperation) Clean() error {
-	// return deleteObject(housekeepingSvc, op.ObjectName, op.Bucket)
 	return nil
 }
 
 // Clean removes the objects and buckets left from the previous StatOperation
 func (op *StatOperation) Clean() error {
-	// return deleteObject(housekeepingSvc, op.ObjectName, op.Bucket)
 	return nil
 }
 
 // Clean removes the objects and buckets left from the previous DeleteOperation
 func (op *DeleteOperation) Clean() error {
-	return nil
+	log.WithField("dir", op.Directory).Debug("Doing DeleteOperation clean")
+	return os.Remove(op.Directory)
 }
 
 // Clean does nothing here
 func (op *Stopper) Clean() error {
 	return nil
-}
-
-func generateBytes(payloadGenerator, testName string, size uint64) []byte {
-	start := time.Now()
-	data := make([]byte, size)
-	switch payloadGenerator {
-	case "empty": // https://github.com/dvassallo/s3-benchmark/blob/aebfe8e05c1553f35c16362b4ac388d891eee440/main.go#L290-L297
-	// case "random":
-	default:
-		randASCIIBytes(data, rng)
-	}
-	duration := time.Since(start)
-	promGenBytesLatency.WithLabelValues(testName).Observe(float64(duration.Milliseconds()))
-	promGenBytesSize.WithLabelValues(testName).Set(float64(size))
-
-	return data
-}
-
-// https://github.com/minio/warp/blob/master/pkg/generator/generator.go
-const asciiLetters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890()"
-
-var (
-	asciiLetterBytes [len(asciiLetters)]byte
-	rng              = rand.New(rand.NewSource(time.Now().UnixNano()))
-	rngMutex         = &sync.Mutex{}
-)
-
-// randASCIIBytes fill destination with pseudorandom ASCII characters [a-ZA-Z0-9].
-// Should never be considered for true random data generation.
-func randASCIIBytes(dst []byte, rng *rand.Rand) {
-	// unprotected access to custom rand.Rand objects can cause panics
-	// https://github.com/golang/go/issues/3611
-	rngMutex.Lock()
-	// Use a single seed.
-	v := rng.Uint64()
-	rngMutex.Unlock()
-	rnd := uint32(v)
-	rnd2 := uint32(v >> 32)
-	for i := range dst {
-		dst[i] = asciiLetterBytes[int(rnd>>16)%len(asciiLetterBytes)]
-		rnd ^= rnd2
-		rnd *= 2654435761
-	}
-}
-
-func init() {
-	for i, v := range asciiLetters {
-		asciiLetterBytes[i] = byte(v)
-	}
 }
