@@ -146,8 +146,16 @@ func (s *Server) scheduleTests(readyWorkers <-chan *net.Conn) {
 	}
 
 	for testNumber, test := range s.config.Tests {
+		name := test.Name
 		for _, thread := range test.FWD.Threads {
 			for _, op := range test.FWD.Operations {
+
+				// NOTE: Due to the fact that a single test case in the configuration file actually
+				// contains multiple test cases (they are just grouped together), such as different
+				// combinations of threads and operations, each representing a distinct test scenario,
+				// we need to rename the test case names accordingly. This ensures that Prometheus
+				// can correctly collect and distinguish the test results without errors.
+				test.Name = fmt.Sprintf("%s-%s-t%d", name, op, thread)
 
 				doneChannel := make(chan bool, workers)
 				resultChannel := make(chan common.BenchmarkResult, workers)
@@ -192,8 +200,11 @@ func (s *Server) scheduleTests(readyWorkers <-chan *net.Conn) {
 				benchResult.Duration = stopTime.Sub(startTime)
 				benchResult.ParallelClients = float64(thread)
 				benchResult.Workers = float64(workers)
-				benchResult.ObjectSize = test.FSD.Size
+				benchResult.FileSize = test.FSD.Size
 				benchResult.Type = common.ToOpType(op)
+				benchResult.Width = test.FSD.Width
+				benchResult.Depth = test.FSD.Depth
+				benchResult.BlockSize = test.FWD.BlockSize
 
 				log.WithField("test", test.Name).
 					WithField("Successful Operations", benchResult.SuccessfulOperations).
@@ -204,8 +215,11 @@ func (s *Server) scheduleTests(readyWorkers <-chan *net.Conn) {
 					WithField("Gen Bytes Average latency in ms", benchResult.GenBytesLatencyAvg).
 					WithField("Workers", benchResult.Workers).
 					WithField("Type", benchResult.Type).
-					WithField("Object size", common.ByteSize(benchResult.ObjectSize)).
-					WithField("Ops", benchResult.BandwidthAvg/float64(benchResult.ObjectSize)).
+					WithField("Width", benchResult.Width).
+					WithField("Depth", benchResult.Depth).
+					WithField("BlockSize", benchResult.BlockSize).
+					WithField("File size", common.ByteSize(benchResult.FileSize)).
+					WithField("Ops", benchResult.BandwidthAvg/float64(benchResult.FileSize)).
 					WithField("Parallel clients", benchResult.ParallelClients).
 					WithField("Test runtime on server", benchResult.Duration).
 					Infof("PERF RESULTS")
@@ -227,8 +241,8 @@ func executeTestOnWorker(conn *net.Conn, config *common.WorkerConf, doneChannel 
 	decoder := json.NewDecoder(*conn)
 	log.WithField("op", config.Op).
 		WithField("parallel-clients", config.ParallelClients).
-		WithField("test-fsd", config.Test.FSD).
-		WithField("test-fwd", config.Test.FWD).
+		WithField("fsd", config.Test.FSD).
+		WithField("fwd", config.Test.FWD).
 		Infof("Start to send test config to clients")
 	_ = encoder.Encode(common.WorkerMessage{Message: "init", Config: config})
 
@@ -304,6 +318,9 @@ func writeResultToCSV(benchResult common.BenchmarkResult) {
 			"Gen Bytes Average Latency in ms",
 			"Workers",
 			"Parallel clients",
+			"Width",
+			"Depth",
+			"Block size",
 			"Test duration seen by server in seconds",
 		})
 		if err != nil {
@@ -318,11 +335,14 @@ func writeResultToCSV(benchResult common.BenchmarkResult) {
 		fmt.Sprintf("%.0f", benchResult.FailedOperations),
 		fmt.Sprintf("%.0f", benchResult.Bytes),
 		fmt.Sprintf("%f", benchResult.BandwidthAvg),
-		fmt.Sprintf("%.2f", benchResult.BandwidthAvg/float64(benchResult.ObjectSize)),
+		fmt.Sprintf("%.2f", benchResult.BandwidthAvg/float64(benchResult.FileSize)),
 		fmt.Sprintf("%f", benchResult.LatencyAvg),
 		fmt.Sprintf("%f", benchResult.GenBytesLatencyAvg),
 		fmt.Sprintf("%f", benchResult.Workers),
 		fmt.Sprintf("%f", benchResult.ParallelClients),
+		fmt.Sprintf("%d", benchResult.Width),
+		fmt.Sprintf("%d", benchResult.Depth),
+		fmt.Sprintf("%d", benchResult.BlockSize),
 		fmt.Sprintf("%f", benchResult.Duration.Seconds()),
 	})
 	if err != nil {
@@ -374,17 +394,20 @@ func (s *Server) generateResults(results []*common.BenchmarkResult) {
 			defer f.Close()
 			t.SetOutputMirror(f)
 		}
-		t.AppendHeader(table.Row{"type", "object-size(KB)", "workers", "parallel-clients", "avg-bandwidth(MB/s)", "ops", "avg-latency(ms)",
+		t.AppendHeader(table.Row{"type", "file-size(KB)", "workers", "parallel-clients", "width", "depth", "block-size(KB)", "avg-bandwidth(MB/s)", "ops", "avg-latency(ms)",
 			"gen-bytes-avg-latency(ms)", "successful-ops", "failed-ops", "duration", "total-mbytes", "name",
 		})
 		for _, r := range results {
 			t.AppendRow(table.Row{
 				r.Type.String(),
-				r.ObjectSize / 1024,
+				r.FileSize / 1024,
 				r.Workers,
 				r.ParallelClients,
+				r.Width,
+				r.Depth,
+				r.BlockSize / 1024,
 				fmt.Sprintf("%.1f", r.BandwidthAvg/1024/1024),
-				fmt.Sprintf("%.2f", r.BandwidthAvg/float64(r.ObjectSize)),
+				fmt.Sprintf("%.2f", r.BandwidthAvg/float64(r.FileSize)),
 				fmt.Sprintf("%.2f", r.LatencyAvg),
 				fmt.Sprintf("%.2f", r.GenBytesLatencyAvg),
 				r.SuccessfulOperations,
@@ -408,6 +431,9 @@ func (s *Server) generateResults(results []*common.BenchmarkResult) {
 			{Number: 11, Align: text.AlignCenter},
 			{Number: 12, Align: text.AlignCenter},
 			{Number: 13, Align: text.AlignCenter},
+			{Number: 14, Align: text.AlignCenter},
+			{Number: 15, Align: text.AlignCenter},
+			{Number: 16, Align: text.AlignCenter},
 		})
 		t.SortBy([]table.SortBy{
 			{
@@ -415,7 +441,7 @@ func (s *Server) generateResults(results []*common.BenchmarkResult) {
 				Mode: table.Asc,
 			},
 			{
-				Name: "object-size(KB)",
+				Name: "file-size(KB)",
 				Mode: table.AscNumeric,
 			},
 			{

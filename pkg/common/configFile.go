@@ -169,7 +169,7 @@ type fwdAlias struct {
 type FWD struct {
 	Operations []string `yaml:"operations" json:"operations"` // will override global config
 	Threads    []uint64 `yaml:"threads" json:"threads"`       // will override global config
-	BlockSize  uint64   `yaml:"block_size" json:"block_size"` // 4k, 1m, 1g
+	BlockSize  uint64   `yaml:"block_size" json:"block_size"` // 4k, 1m, 4m
 }
 
 func (w *FWD) UnmarshalJSON(data []byte) error {
@@ -296,7 +296,10 @@ type BenchmarkResult struct {
 	GenBytesLatencyAvg float64
 	Duration           time.Duration
 	Type               OpType
-	ObjectSize         uint64
+	FileSize           uint64
+	Depth              uint64
+	Width              uint64
+	BlockSize          uint64
 }
 
 // WorkerMessage is the struct that is exchanged in the communication between
