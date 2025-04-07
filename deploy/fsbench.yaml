@@ -214,7 +214,7 @@ data:
           # direct_io: true  # override global value
           depth: 6
           width: 3
-          files: 200000
+          files: 2000
           size: 4k
         fwd:
           # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
@@ -227,7 +227,7 @@ data:
           # direct_io: true
           depth: 6
           width: 3
-          files: 200000
+          files: 2000
           size: 8k
         fwd:
           # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
@@ -253,7 +253,7 @@ data:
           # direct_io: true
           depth: 6
           width: 3
-          files: 300000
+          files: 2000
           size: 32k
         fwd:
           # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
@@ -279,7 +279,7 @@ data:
           # direct_io: true
           depth: 6
           width: 3
-          files: 200000
+          files: 2000
           size: 128k
         fwd:
           # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
@@ -305,7 +305,7 @@ data:
           # direct_io: true
           depth: 6
           width: 3
-          files: 64000
+          files: 4000
           size: 512k
         fwd:
           # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
@@ -318,7 +318,7 @@ data:
           # direct_io: true
           depth: 6
           width: 3
-          files: 32000
+          files: 1200
           size: 1m
         fwd:
           # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
@@ -331,7 +331,7 @@ data:
           # direct_io: true
           depth: 6
           width: 3
-          files: 8000
+          files: 1000
           size: 4m
         fwd:
           # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
@@ -344,7 +344,7 @@ data:
           # direct_io: true
           depth: 6
           width: 3
-          files: 500
+          files: 200
           size: 64m
         fwd:
           # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
@@ -357,7 +357,7 @@ data:
           # direct_io: true
           depth: 6
           width: 3
-          files: 100
+          files: 80
           size: 256m
         fwd:
           # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
@@ -383,7 +383,7 @@ data:
           # direct_io: true
           depth: 6
           width: 3
-          files: 35
+          files: 20
           size: 1g
         fwd:
           # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists

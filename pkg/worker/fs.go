@@ -56,6 +56,7 @@ func NewOSClient(rootDir string, fsize, bsize int, options ...OSClientOption) *O
 	for _, option := range options {
 		option(c)
 	}
+	// refer to https://github.com/juicedata/juicefs/blob/70ae9ac1bfdd28d8ad4e638ac6d17ef01170973b/cmd/bench.go#L206-L212
 	if fsize <= bsize {
 		c.bcount = 1
 		c.bsize = fsize
@@ -90,6 +91,7 @@ func (c *OSClient) open(filename string, flags int) (*os.File, error) {
 	}
 
 	var f *os.File
+	// https://github.com/src-d/fsbench/blob/ca7265fa01f19f4e679c4c5883d93ecb86fd4069/fs/os.go#L39-L41
 	if c.direct {
 		f, err = directio.OpenFile(fullpath, flags, 0666)
 	} else {

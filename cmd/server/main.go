@@ -163,7 +163,11 @@ func (s *Server) scheduleTests(readyWorkers <-chan *net.Conn) {
 
 				for worker := 0; worker < workers; worker++ {
 					workerID := fmt.Sprintf("w%d", worker)
-					if op != common.Write.String() && reorderTasks { // having a different node read/stat back data than wrote it
+					if op != common.Write.String() && reorderTasks {
+						// having a different node read/stat back data than wrote it
+						//
+						// https://ior.readthedocs.io/en/latest/userDoc/faq.html
+						// HOW DO I BYPASS CACHING WHEN READING BACK A FILE I’VE JUST WRITTEN?
 						workerID = fmt.Sprintf("w%d", (worker+1)%workers)
 					}
 					workerConfig := &common.WorkerConf{
