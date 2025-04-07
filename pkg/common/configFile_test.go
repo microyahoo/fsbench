@@ -239,20 +239,6 @@ tests:
       # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
       block_size: 8k
 `)}, &TestConf{
-			ClientConfigs: []*ClientConfiguration{
-				{
-					Name: "k1",
-					IP:   "10.3.11.81",
-				},
-				{
-					Name: "k2",
-					IP:   "10.3.11.82",
-				},
-				{
-					Name: "k3",
-					IP:   "10.3.11.83",
-				},
-			},
 			ReportConfig: &ReportConfiguration{
 				Format: "csv",
 				Bucket: "test",
@@ -446,20 +432,6 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
 	}
   }
 ]}`)}, &TestConf{
-			ClientConfigs: []*ClientConfiguration{
-				{
-					Name: "k1",
-					IP:   "10.3.11.81",
-				},
-				{
-					Name: "k2",
-					IP:   "10.3.11.82",
-				},
-				{
-					Name: "k3",
-					IP:   "10.3.11.83",
-				},
-			},
 			ReportConfig: &ReportConfiguration{
 				Format: "csv",
 				Bucket: "test",

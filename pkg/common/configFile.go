@@ -250,10 +250,9 @@ type ClientConfiguration struct {
 
 // TestConf contains all the information necessary to set up a distributed test
 type TestConf struct {
-	ClientConfigs []*ClientConfiguration   `yaml:"client_configs" json:"client_configs"`
-	ReportConfig  *ReportConfiguration     `yaml:"report_config" json:"report_config"`
-	GlobalConfig  *GlobalConfiguration     `yaml:"global_config" json:"global_config"`
-	Tests         []*TestCaseConfiguration `yaml:"tests" json:"tests"`
+	ReportConfig *ReportConfiguration     `yaml:"report_config" json:"report_config"`
+	GlobalConfig *GlobalConfiguration     `yaml:"global_config" json:"global_config"`
+	Tests        []*TestCaseConfiguration `yaml:"tests" json:"tests"`
 }
 
 type GlobalConfiguration struct {
@@ -313,9 +312,6 @@ type WorkerMessage struct {
 
 // CheckSetConfig checks the global config
 func CheckSetConfig(config *TestConf) {
-	if len(config.ClientConfigs) == 0 {
-		log.WithError(fmt.Errorf("fs client configs need to be set")).Fatalf("Issue detected when scanning through the fs client configs")
-	}
 	if config.GlobalConfig == nil { // TODO: check more configs
 		log.WithError(fmt.Errorf("fs global configs need to be set")).Fatalf("Issue detected when scanning through the fs global configs")
 	}

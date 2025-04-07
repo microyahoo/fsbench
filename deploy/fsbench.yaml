@@ -173,22 +173,6 @@ metadata:
   namespace: fsbench
 data:
   config.yaml: |
-    client_configs:
-      - name: test-node01
-        ip: 10.3.10.120
-      - name: test-node02
-        ip: 10.3.10.121
-      - name: test-node03
-        ip: 10.3.10.122
-      - name: test-node04
-        ip: 10.3.10.135
-      - name: test-node05
-        ip: 10.3.10.136
-      - name: test-node06
-        ip: 10.3.10.137
-      - name: test-node07
-        ip: 10.3.10.138
-
     report_config:
       format: csv # csv, md or html
       bucket: test
