@@ -387,7 +387,8 @@ func (s *Server) generateResults(results []*common.BenchmarkResult) {
 	if s.config.ReportConfig != nil {
 		format = s.config.ReportConfig.Format
 	}
-	outputFile := fmt.Sprintf("/tmp/fsbench_results_%d.%s", time.Now().UnixMilli(), format)
+	var timestamp = time.Now().UnixMilli()
+	outputFile := fmt.Sprintf("/tmp/fsbench_results_%d.%s", timestamp, format)
 	log.Infof("Start to generate benchmark results to %s", outputFile)
 	{
 		f, err := os.Create(outputFile)
@@ -485,7 +486,7 @@ func (s *Server) generateResults(results []*common.BenchmarkResult) {
 	defer f.Close()
 	_, e = client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: &s.config.ReportConfig.Bucket,
-		Key:    aws.String(fmt.Sprintf("fsbench_results_%d.%s", time.Now().UnixMilli(), format)),
+		Key:    aws.String(fmt.Sprintf("fsbench_results_%d.%s", timestamp, format)),
 		Body:   f,
 	})
 	if e != nil {
