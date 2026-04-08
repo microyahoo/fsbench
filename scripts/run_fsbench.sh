@@ -6,15 +6,36 @@ WORKER_URL="http://s3-smd.deeproute.cn/smd-pkg/tools/fsbench/fsbench-worker"
 CONFIG_URL="http://s3-smd.deeproute.cn/smd-pkg/tools/fsbench/fsbench-config.yaml"
 
 SERVER_IP="10.3.8.1"
-WORKER_IP_RANGE="10.3.8.{1..10}"  # Generate sequential IPs using {1..10}
+# Define: mixed continuous ranges and discrete IPs
+WORKER_RANGES=(
+    "10.3.8.1-30"    # Continuous range: 1,2,...,30
+    "10.3.8.237-239"    # Continuous range: 237,238,239
+)
+
+# Generate all worker IP addresses
+WORKER_IPS=()
+for range in "${WORKER_RANGES[@]}"; do
+    if [[ "$range" =~ ^([0-9]+\.[0-9]+\.[0-9]+\.)([0-9]+)-([0-9]+)$ ]]; then
+        # Process continuous range
+        prefix="${BASH_REMATCH[1]}"
+        start="${BASH_REMATCH[2]}"
+        end="${BASH_REMATCH[3]}"
+        for ((i=start; i<=end; i++)); do
+            WORKER_IPS+=("${prefix}${i}")
+        done
+    else
+        # Single IP
+        WORKER_IPS+=("$range")
+    fi
+done
 
 SERVER_PORT="2000"
 
 # 1. Check if fsbench-config.yaml exists
 if [ ! -f "fsbench-config.yaml" ]; then
     echo "fsbench-config.yaml not found, downloading..."
-    wget -q "$CONFIG_URL" -O fsbench-config.yaml
-    if [ $? -ne 0 ]; then
+    if ! wget -q "$CONFIG_URL" -O fsbench-config.yaml
+    then
         echo "Error: Failed to download fsbench-config.yaml"
         exit 1
     fi
@@ -46,7 +67,7 @@ nohup ./fsbench-server --config.file fsbench-config.yaml > server.log 2>&1 &
 sleep 5
 
 # 4. Start workers on all nodes (including server node)
-for ip in $(eval echo "$WORKER_IP_RANGE"); do  # Expand {1..10} using eval
+for ip in "${WORKER_IPS[@]}"; do
     echo "Starting fsbench worker on $ip..."
     if [ "$ip" == "$SERVER_IP" ]; then
         # Local execution
